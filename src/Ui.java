@@ -20,7 +20,7 @@ final class Ui {
     static String blank(String label){return "<div class=blank>"+e(label)+"</div>";}
     static String page(App.Request r,String body) {
         boolean signed=r!=null&&r.session().customer!=0;
-        String account=signed?"<a href='/orders'>Đơn của tôi</a>"+form(r,"/logout")+"<button class=link>Đăng xuất</button></form>":"<a href='/login'>Đăng nhập</a>";
+        String account=signed?(r.admin()?"<a href='/admin'>Quản trị</a>":"<a href='/orders'>Đơn của tôi</a>")+form(r,"/logout")+"<button class=link>Đăng xuất</button></form>":"<a href='/login'>Đăng nhập</a>";
         return """
             <!doctype html><html lang=vi><head><meta charset=UTF-8><meta name=viewport content='width=device-width,initial-scale=1'>
             <title>Bếp Mẻ Mới · Gia Hòa Phát</title><link rel=stylesheet href=/style.css></head>
@@ -28,7 +28,7 @@ final class Ui {
             <a class=brand href='/'><span class=brand-icon aria-hidden=true>✦</span><span>Bếp Mẻ Mới<small>Gia Hòa Phát</small></span></a>
             <nav aria-label='Điều hướng chính'><a href='/pantry'>Cửa hàng</a><a href='/bag'>Giỏ hàng</a>
             """+account+"</nav></div></header><main id=main>"+body+
-            "</main><footer><b>Bếp Mẻ Mới</b><a href='/pantry'>Xem cửa hàng ↗</a></footer></body></html>";
+            "</main><footer><b>Bếp Mẻ Mới</b><a href='/admin/login'>Quản trị</a></footer></body></html>";
     }
     static String error(String reason){return page(null,heading("Chưa thể tiếp tục",reason)+"<a class=button href='/pantry'>Về cửa hàng</a>");}
     static String kind(String name){return switch(name){case "ingredients"->"Nguyên liệu";case "tools"->"Dụng cụ";case "equipment"->"Thiết bị";default->"Tất cả";};}

@@ -29,6 +29,7 @@ public final class App {
         String field(String k,int max){String value=get(k);if(value.length()>max)throw new IllegalArgumentException("Thông tin quá dài.");return value;}
         String need(String k,int max){String value=field(k,max);if(value.isBlank())throw new IllegalArgumentException("Vui lòng điền đủ thông tin.");return value;}
         int id(String key){int id=Integer.parseInt(get(key));if(id<=0)throw new IllegalArgumentException("Mã không hợp lệ.");return id;}
+        boolean admin(){return Db.yes(customer,"isAdmin");}
     }
     record Quote(Map<String,Object> shop,List<Map<String,Object>> rows,long subtotal,int fee) {
         long total(){return subtotal+fee;}
@@ -61,7 +62,7 @@ public final class App {
                 if(form.length>25_000){send(h,413,Ui.error("Dữ liệu quá lớn."));return;}
                 var data=decode(post?new String(form,StandardCharsets.UTF_8):h.getRequestURI().getRawQuery());
                 if(post&&!s.token.equals(data.get("csrf"))){send(h,403,Ui.error("Phiên hết hạn. Hãy tải lại trang."));return;}
-                var person=s.customer==0?Map.<String,Object>of():Db.one("SELECT id,name,email FROM dbo.Customers WHERE id=?",s.customer);
+                var person=s.customer==0?Map.<String,Object>of():Db.one("SELECT id,name,email,isAdmin FROM dbo.Customers WHERE id=?",s.customer);
                 if(person.isEmpty())s.customer=0;
                 var r=new Request(h,s,data,person);
                 if(post)post(path,r);else get(path,r);
@@ -105,6 +106,7 @@ public final class App {
     static void send(HttpExchange h,int code,String html)throws IOException{bytes(h,code,"text/html",html.getBytes(StandardCharsets.UTF_8));}
     static void redirect(Request r,String target)throws IOException{r.h().getResponseHeaders().set("Location",target);r.h().sendResponseHeaders(303,-1);}
     static boolean signed(Request r,String next)throws IOException{
+        if(r.admin()){send(r.h(),403,Ui.error("Hãy dùng tài khoản khách để đặt hoặc xem đơn cá nhân."));return false;}
         if(r.session().customer!=0)return true;
         redirect(r,"/login"+(next.equals("checkout")?"?next=checkout":""));return false;
     }
@@ -136,6 +138,14 @@ public final class App {
             }
             case "/bag" -> body=Ui.bag(r,basket(r));
             case "/login","/register" -> body=Ui.auth(r,path);
+            case "/admin/login" -> {
+                if(r.admin()){redirect(r,"/admin");return;}
+                body=Admin.login(r);
+            }
+            case "/admin" -> {
+                if(!Admin.allowed(r))return;
+                body=Admin.page(r);
+            }
             case "/checkout" -> {
                 if(!signed(r,"checkout"))return;
                 var shops=Db.rows("SELECT * FROM dbo.Shops ORDER BY id");
@@ -165,13 +175,14 @@ public final class App {
         switch(path){
             case "/register" -> {
                 String name=r.need("name",80),email=email(r.get("email")),pass=r.get("password");
+                if(email.equals(Admin.EMAIL))throw new IllegalArgumentException("Email này dành cho quản trị.");
                 if(pass.length()<10||pass.length()>100)throw new IllegalArgumentException("Mật khẩu cần từ 10 đến 100 ký tự.");
                 byte[] salt=new byte[16];RNG.nextBytes(salt);
                 Db.update("INSERT dbo.Customers(name,email,passwordHash) VALUES(?,?,?)",name,email,HexFormat.of().formatHex(salt)+":"+HexFormat.of().formatHex(derive(pass,salt)));
                 redirect(r,"/login?created=1"+(r.get("next").equals("checkout")?"&next=checkout":""));
             }
             case "/login" -> {
-                var row=Db.one("SELECT id,passwordHash FROM dbo.Customers WHERE email=?",email(r.get("email")));
+                var row=Db.one("SELECT id,passwordHash FROM dbo.Customers WHERE email=? AND isAdmin=0",email(r.get("email")));
                 String hash=Db.str(row,"passwordHash"),pass=r.get("password");
                 if(hash.isEmpty()||pass.length()>100)throw new IllegalArgumentException("Email hoặc mật khẩu chưa đúng.");
                 var hex=HexFormat.of();
@@ -191,7 +202,10 @@ public final class App {
                 redirect(r,r.get("next").equals("checkout")?"/checkout":"/pantry");
             }
             case "/logout" -> {SESSIONS.remove(r.session().key);fresh(r.h(),0);redirect(r,"/");}
+            case "/admin/login" -> Admin.signIn(r);
+            case "/admin" -> {if(Admin.allowed(r))Admin.change(r);}
             case "/bag" -> {
+                if(r.admin()){send(r.h(),403,Ui.error("Hãy dùng tài khoản khách để mua hàng."));return;}
                 int id=r.id("id"),qty=Integer.parseInt(r.get("qty"));boolean add=r.get("action").equals("add");
                 if(qty<0||qty>99)throw new IllegalArgumentException("Số lượng không hợp lệ.");
                 int user=r.session().customer;

@@ -56,3 +56,21 @@ SELECT s.id,p.id,CASE WHEN p.category='equipment' THEN 9 ELSE 25 END
 FROM dbo.Shops s CROSS JOIN dbo.Products p;
 COMMIT;
 GO
+IF COL_LENGTH(N'dbo.Customers',N'isAdmin') IS NULL
+    ALTER TABLE dbo.Customers ADD isAdmin bit NOT NULL CONSTRAINT DF_Customers_isAdmin DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT 1 FROM dbo.Customers WHERE email=N'admin@bepmemoi.local')
+    INSERT dbo.Customers(name,email,passwordHash,isAdmin)
+    VALUES(N'Quản trị viên',N'admin@bepmemoi.local',
+        '76ee6fcfcfdee2054d108b4522a8d8f1:17a4b0292360ac7f63a1645094de29e7d044c54d288160d8b4d197fdb5c5f594',1);
+IF NOT EXISTS (SELECT 1 FROM dbo.Customers WHERE email=N'admin@bepmemoi.local' AND isAdmin=1)
+    THROW 51001,N'Admin demo email is already used by a customer.',1;
+GO
+IF OBJECT_ID(N'dbo.OrderEvents',N'U') IS NULL
+CREATE TABLE dbo.OrderEvents(
+ id int IDENTITY PRIMARY KEY, orderId int NOT NULL REFERENCES dbo.Orders(id),
+ actor int NOT NULL REFERENCES dbo.Customers(id), oldStatus varchar(12) NOT NULL,
+ newStatus varchar(12) NOT NULL, note nvarchar(200) NULL,
+ created datetime2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
